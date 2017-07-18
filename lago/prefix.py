@@ -20,6 +20,7 @@
 import copy
 import functools
 import glob
+from itertools import izip, imap
 import json
 import logging
 import os
@@ -44,6 +45,7 @@ import virt
 import log_utils
 import build
 import sdk_utils
+import lago_cloud_init
 
 LOGGER = logging.getLogger(__name__)
 LogTask = functools.partial(log_utils.LogTask, logger=LOGGER)
@@ -1167,7 +1169,8 @@ class Prefix(object):
         template_repo=None,
         template_store=None,
         do_bootstrap=True,
-        do_build=True
+        do_build=True,
+        do_cloud_init=True
     ):
         """
         Initializes all the virt infrastructure of the prefix, creating the
@@ -1216,6 +1219,9 @@ class Prefix(object):
             if do_build:
                 self.build(conf['domains'])
 
+            if do_cloud_init:
+                self.cloud_init(self._virt_env.get_vms())
+
             self.save()
             rollback.clear()
 
@@ -1237,6 +1243,22 @@ class Prefix(object):
                         )
 
         utils.invoke_in_parallel(build.Build.build, builders)
+
+    def cloud_init(self, vms):
+
+        vm_obj = [vm for vm in vms.values() if 'cloud-init' in vm._spec]
+        free_dev = map(lambda vm: utils.allocate_dev(vm.disks).next(), vm_obj)
+        with open(self.paths.ssh_id_rsa_pub(), mode='rt') as f:
+            ssh_public_key = f.read()
+
+        iso_specs = lago_cloud_init.LagoCloudInits(
+            vms=zip(vm_obj, free_dev),
+            iso_dir=self.paths.cloud_init(),
+            ssh_public_key=ssh_public_key
+        ).generate(collect_only=False)
+
+        for vm_name, iso_spec in iso_specs.viewitems():
+            vms[vm_name]._spec['disks'].append(iso_spec)
 
     @sdk_utils.expose
     def export_vms(

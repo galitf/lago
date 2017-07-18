@@ -792,6 +792,68 @@ def ver_cmp(ver1, ver2):
     )
 
 
+def allocate_dev(disks_spec, dev_type='sd'):
+    """
+    Get free devices of type 'dev_type'
+
+    Args:
+        disks_spec(dict): list of disks
+        dev_type(str): version string
+
+    Returns:
+        generator which yields the next free device
+    """
+    taken_devs = set()
+    for disk in disks_spec:
+        current_dev = disk.get('dev')
+        if current_dev and current_dev.startswith(dev_type):
+            try:
+                taken_devs.add(current_dev[2])
+            except IndexError:
+                pass
+
+    r = (i for i in xrange(ord('a'), ord('z') + 1))
+
+    for i in r:
+        dev = chr(i)
+        if dev not in taken_devs:
+            yield dev_type + dev
+
+
+def deep_update(a, b):
+    """
+    Recursively merge dict b into dict a.
+    List will be joined.
+    If a and b as the same key but its value's type,
+    differ between the two, the value from b will be taken.
+
+    Args:
+        a(dict):
+        b(dict): version string
+
+    Returns:
+        generator which yields the next free device
+    """
+    if not (
+        isinstance(a, collections.Mapping)
+        and isinstance(b, collections.Mapping)
+    ):
+        return a
+
+    for k, v in b.iteritems():
+        if k in a and (type(a[k] == type(v))):
+            if isinstance(v, list):
+                a[k] = a[k] + v
+            elif isinstance(v, collections.Mapping):
+                a[k] = deep_update(a[k], v)
+            else:
+                a[k] = v
+        else:
+            a[k] = v
+
+    return a
+
+
 class LagoException(Exception):
     pass
 
